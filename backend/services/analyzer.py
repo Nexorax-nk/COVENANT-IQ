@@ -13,7 +13,7 @@ def clean_json_output(raw_text):
     Removes markdown formatting (```json ... ```) that LLMs often add.
     """
     cleaned = re.sub(r"```json\s*", "", raw_text)  # Remove start tag
-    cleaned = re.sub(r"```\s*", "", cleaned)      # Remove end tag
+    cleaned = re.sub(r"```\s*", "", cleaned) # Remove end tag     
     return cleaned.strip()
 
 def analyze_covenants_with_groq(text_content: str):
