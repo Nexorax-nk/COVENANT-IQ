@@ -4,8 +4,8 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { 
-  ArrowLeft, Download, Calendar, CheckCircle2, FileText, ShieldAlert, 
-  Loader2, Mail, UploadCloud, File as FileIcon, AlertCircle, TrendingUp, AlertTriangle
+  ArrowLeft, Download, FileText, ShieldAlert, 
+  Loader2, Mail, UploadCloud, File as FileIcon, AlertCircle, TrendingUp, AlertTriangle, CheckCircle2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine 
 } from "recharts";
 
 // --- TYPES ---
@@ -31,13 +31,13 @@ interface EnrichedCovenant {
   threshold: string;
   operator: string;
   confidence: string;
-  // Simulated "Real" Data
   actualValue: string;
   status: "Safe" | "Warning" | "Breach";
-  variance: string; // e.g. "0.5x buffer"
+  variance: string;
 }
 
 interface EnrichedObligation {
+  id: number; // Added ID for tracking uploads
   name: string;
   frequency: string;
   dueDate: string;
@@ -53,6 +53,32 @@ interface DocFile {
   status: "verified" | "pending";
 }
 
+// --- 1. COMPACT TOOLTIP (Visual Fix) ---
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const value = payload[0].value;
+    const isBreach = value > 4.0;
+    return (
+      <div className="bg-white/95 backdrop-blur-sm p-2.5 border border-zinc-200 shadow-lg rounded-lg outline-none min-w-35">
+        <p className="text-[10px] uppercase tracking-wider font-semibold text-zinc-500 mb-1">{label}</p>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-lg font-bold text-zinc-900">{value.toFixed(2)}x</span>
+          {isBreach ? (
+            <Badge variant="destructive" className="h-4 text-[9px] px-1.5 rounded-sm">Breach</Badge>
+          ) : (
+            <Badge variant="outline" className="h-4 text-[9px] px-1.5 rounded-sm text-green-600 bg-green-50 border-green-200">Safe</Badge>
+          )}
+        </div>
+        <div className="mt-1.5 pt-1.5 border-t border-dashed border-zinc-100 flex justify-between items-center text-[10px] text-zinc-400">
+          <span>Target Limit</span>
+          <span className="font-medium text-zinc-600">4.00x</span>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
 export default function LoanDetailsPage() {
   const params = useParams();
   const loanId = params.id as string;
@@ -62,14 +88,18 @@ export default function LoanDetailsPage() {
   const [reportingObligations, setReportingObligations] = useState<EnrichedObligation[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // File Upload State
+  // File Upload States
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  
+  // Track specific obligation being uploaded
+  const [uploadingObligationId, setUploadingObligationId] = useState<number | null>(null);
+
   const [documents, setDocuments] = useState<DocFile[]>([
     { id: 1, name: "Executed_Facility_Agreement.pdf", type: "Contract", date: "2023-11-01", status: "verified" },
   ]);
 
-  // 1. FETCH & PROCESS DATA
+  // FETCH DATA
   useEffect(() => {
     async function fetchLoanDetails() {
       if (!loanId) return;
@@ -80,44 +110,38 @@ export default function LoanDetailsPage() {
         const data: Loan = await res.json();
         setLoan(data);
 
-        // --- INTELLIGENT PARSING & SIMULATION ---
         try {
           const rawCovenants = JSON.parse(data.covenants_json);
           const financials: EnrichedCovenant[] = [];
           const reports: EnrichedObligation[] = [];
 
-          rawCovenants.forEach((cov: any) => {
+          rawCovenants.forEach((cov: any, index: number) => {
             const lowerName = cov.name.toLowerCase();
             
-            // LOGIC: Separate "Reporting" from "Financial" covenants
             if (lowerName.includes("reporting") || lowerName.includes("financials") || lowerName.includes("statement")) {
-              // It's an Obligation
               reports.push({
+                id: index, // Simple ID generation
                 name: cov.name,
                 frequency: lowerName.includes("quarter") ? "Quarterly" : "Annual",
-                dueDate: "2025-10-15", // Mock due date based on typical cycles
+                dueDate: "2025-10-15",
                 status: Math.random() > 0.5 ? "pending" : "overdue",
                 threshold_days: cov.threshold
               });
             } else {
-              // It's a Financial Ratio -> SIMULATE ACTUALS
               const isRatio = cov.threshold.includes("x") || cov.threshold.includes(":");
-              // Parse the number from threshold (e.g. "3.50x" -> 3.5)
               const limitVal = parseFloat(cov.threshold.replace(/[^0-9.]/g, '')) || 0;
               
-              // Generate a fake "Actual" value close to the limit
-              // If Risk is "Critical", make it breach. If "Healthy", make it safe.
               let actualVal = 0;
               let status: "Safe" | "Warning" | "Breach" = "Safe";
               
               if (data.risk_status === "Critical") {
-                actualVal = cov.operator.includes("<") ? limitVal + 0.2 : limitVal - 0.2; // Breach
+                actualVal = cov.operator.includes("<") ? limitVal + 0.2 : limitVal - 0.2;
                 status = "Breach";
               } else if (data.risk_status === "Watchlist") {
-                actualVal = cov.operator.includes("<") ? limitVal - 0.1 : limitVal + 0.1; // Close call
+                actualVal = cov.operator.includes("<") ? limitVal - 0.1 : limitVal + 0.1;
                 status = "Warning";
               } else {
-                actualVal = cov.operator.includes("<") ? limitVal - 1.0 : limitVal + 1.0; // Safe
+                actualVal = cov.operator.includes("<") ? limitVal - 1.0 : limitVal + 1.0;
                 status = "Safe";
               }
 
@@ -146,8 +170,29 @@ export default function LoanDetailsPage() {
     fetchLoanDetails();
   }, [loanId]);
 
-  // Upload Simulation
-  const handleFileUpload = () => {
+  // --- 2. ACTION: AUDIT LOG ---
+  const handleExport = () => {
+    if (!loan) return;
+    const fileContent = `AUDIT LOG REPORT\nLoan ID: ${loan.id}\nBorrower: ${loan.borrower_name}\nDate: ${new Date().toLocaleString()}\nStatus: ${loan.risk_status}\n\n-- EVENT HISTORY --\n[${new Date().toISOString()}] User accessed loan details.\n[${loan.effective_date}] Loan agreement analyzed by AI.\n`;
+    const file = new Blob([fileContent], {type: 'text/plain'});
+    const element = document.createElement("a");
+    element.href = URL.createObjectURL(file);
+    element.download = `Audit_Log_${loan.borrower_name.replace(/\s/g, '_')}.txt`;
+    document.body.appendChild(element); 
+    element.click();
+    document.body.removeChild(element);
+  };
+
+  // --- 3. ACTION: EMAIL BORROWER ---
+  const handleContact = () => {
+    if (!loan) return;
+    const subject = encodeURIComponent(`Urgent: Covenant Compliance Check - Loan #${loan.id}`);
+    const body = encodeURIComponent(`Dear ${loan.borrower_name} Team,\n\nWe are reviewing the covenant status for your facility (${loan.loan_amount}). Please provide the latest compliance certificate.\n\nRegards,\nCredit Risk Team`);
+    window.location.href = `mailto:finance@${loan.borrower_name.replace(/\s/g, '').toLowerCase()}.com?subject=${subject}&body=${body}`;
+  };
+
+  // --- 4. ACTION: VAULT UPLOAD ---
+  const handleVaultUpload = () => {
     setUploading(true);
     let progress = 0;
     const interval = setInterval(() => {
@@ -164,18 +209,40 @@ export default function LoanDetailsPage() {
           date: new Date().toISOString().split('T')[0],
           status: "pending"
         }, ...prev]);
-        alert("Document uploaded successfully!");
+        alert("Document securely uploaded to vault!");
       }
-    }, 200);
+    }, 150);
   };
 
-  // Mock Chart
+  // --- 5. ACTION: OBLIGATION PROOF UPLOAD ---
+  const handleObligationUpload = (id: number) => {
+    setUploadingObligationId(id);
+    // Simulate a quick scan/upload
+    setTimeout(() => {
+      setReportingObligations(prev => prev.map(item => {
+        if (item.id === id) {
+          return { ...item, status: "complete" };
+        }
+        return item;
+      }));
+      setUploadingObligationId(null);
+      // Also add to docs for realism
+      setDocuments(prev => [{
+        id: Date.now(),
+        name: "Compliance_Proof_Upload.pdf",
+        type: "Compliance",
+        date: new Date().toISOString().split('T')[0],
+        status: "verified"
+      }, ...prev]);
+    }, 1500);
+  };
+
   const chartData = [
     { quarter: "Q1 2024", actual: 2.1, limit: 4.0 },
     { quarter: "Q2 2024", actual: 2.4, limit: 4.0 },
     { quarter: "Q3 2024", actual: 2.9, limit: 4.0 },
     { quarter: "Q4 2024", actual: 3.5, limit: 4.0 }, 
-    { quarter: "Q1 2025 (Proj)", actual: 3.9, limit: 4.0 },
+    { quarter: "Q1 2025 (Proj)", actual: 3.9, limit: 4.0 }, // (Proj) = Projected by AI
     { quarter: "Q2 2025 (Proj)", actual: 4.2, limit: 4.0 },
   ];
 
@@ -184,7 +251,7 @@ export default function LoanDetailsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
-      {/* HEADER SECTION */}
+      {/* HEADER */}
       <div className="flex flex-col gap-4 border-b border-zinc-200 pb-6">
         <div className="flex items-center gap-4">
           <Link href="/loans">
@@ -213,17 +280,16 @@ export default function LoanDetailsPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="text-zinc-600">
+            <Button variant="outline" className="text-zinc-600" onClick={handleExport}>
               <Download className="mr-2 h-4 w-4" /> Audit Log
             </Button>
-            <Button className="bg-zinc-900 hover:bg-zinc-800 text-white">
+            <Button className="bg-zinc-900 hover:bg-zinc-800 text-white" onClick={handleContact}>
               <Mail className="mr-2 h-4 w-4" /> Email Borrower
             </Button>
           </div>
         </div>
       </div>
 
-      {/* TABS NAVIGATION */}
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="bg-transparent border-b border-zinc-200 w-full justify-start h-auto p-0 space-x-6 rounded-none">
           <TabsTrigger value="overview" className="rounded-none border-b-2 border-transparent data-[state=active]:border-red-600 data-[state=active]:text-red-600 px-0 py-3">Overview & Covenants</TabsTrigger>
@@ -231,32 +297,65 @@ export default function LoanDetailsPage() {
           <TabsTrigger value="documents" className="rounded-none border-b-2 border-transparent data-[state=active]:border-red-600 data-[state=active]:text-red-600 px-0 py-3">Document Vault</TabsTrigger>
         </TabsList>
 
-        {/* --- TAB 1: OVERVIEW & COVENANTS --- */}
         <TabsContent value="overview" className="mt-6 space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Chart Section */}
+            
+            {/* AREA CHART */}
             <Card className="lg:col-span-2 border-zinc-200 shadow-sm">
               <CardHeader>
                 <CardTitle>Financial Performance</CardTitle>
                 <CardDescription>Leverage Ratio vs Covenant Limit</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-75 w-full">
+                <div className="h-87.5 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData}>
+                    <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorActual" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#18181b" stopOpacity={0.1}/>
+                          <stop offset="95%" stopColor="#18181b" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f4f4f5" />
-                      <XAxis dataKey="quarter" stroke="#71717A" fontSize={12} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#71717A" fontSize={12} tickLine={false} axisLine={false} />
-                      <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                      <ReferenceLine y={4.0} stroke="#DC2626" strokeDasharray="5 5" label="Limit (4.0x)" />
-                      <Line type="monotone" dataKey="actual" stroke="#18181b" strokeWidth={3} dot={{r:4}} />
-                    </LineChart>
+                      <XAxis 
+                        dataKey="quarter" 
+                        stroke="#71717A" 
+                        fontSize={12} 
+                        tickLine={false} 
+                        axisLine={false} 
+                        tickMargin={10}
+                      />
+                      <YAxis 
+                        stroke="#71717A" 
+                        fontSize={12} 
+                        tickLine={false} 
+                        axisLine={false} 
+                        tickFormatter={(value) => `${value}x`}
+                      />
+                      <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#e4e4e7', strokeWidth: 1 }} />
+                      
+                      <ReferenceLine 
+                        y={4.0} 
+                        stroke="#DC2626" 
+                        strokeDasharray="4 4" 
+                        label={{ value: 'Limit (4.0x)', fill: '#DC2626', fontSize: 10, position: 'insideTopRight' }} 
+                      />
+                      
+                      <Area 
+                        type="monotone" 
+                        dataKey="actual" 
+                        stroke="#18181b" 
+                        strokeWidth={3} 
+                        fillOpacity={1} 
+                        fill="url(#colorActual)" 
+                        activeDot={{ r: 6, strokeWidth: 0, fill: '#18181b' }}
+                      />
+                    </AreaChart>
                   </ResponsiveContainer>
                 </div>
               </CardContent>
             </Card>
 
-            {/* UPGRADED Covenant Cards */}
             <div className="space-y-4">
               <h3 className="font-semibold text-zinc-900">Active Financial Covenants</h3>
                {financialCovenants.length === 0 && <p className="text-zinc-500 text-sm">No financial covenants found.</p>}
@@ -297,7 +396,6 @@ export default function LoanDetailsPage() {
           </div>
         </TabsContent>
 
-        {/* --- TAB 2: OBLIGATIONS (Dynamic Table) --- */}
         <TabsContent value="obligations" className="mt-6">
           <Card className="shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between">
@@ -330,16 +428,32 @@ export default function LoanDetailsPage() {
                         <td className="p-4">
                           <Badge className={`
                             ${item.status === 'overdue' ? 'bg-red-100 text-red-700 hover:bg-red-100' : 
+                              item.status === 'complete' ? 'bg-green-100 text-green-700 hover:bg-green-100' :
                               'bg-yellow-100 text-yellow-700 hover:bg-yellow-100'} border-transparent
                           `}>
                             {item.status === 'overdue' && <AlertCircle className="w-3 h-3 mr-1" />}
-                            {item.status === 'overdue' ? 'Overdue' : 'Pending Review'}
+                            {item.status === 'complete' && <CheckCircle2 className="w-3 h-3 mr-1" />}
+                            {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
                           </Badge>
                         </td>
                         <td className="p-4 text-right">
-                            <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 border-red-200 hover:bg-red-50">
-                              Upload Proof
-                            </Button>
+                           {item.status === 'complete' ? (
+                              <span className="text-xs text-green-600 font-medium flex items-center justify-end gap-1">
+                                <CheckCircle2 className="h-4 w-4" /> Uploaded
+                              </span>
+                           ) : (
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                className="text-red-600 hover:text-red-700 border-red-200 hover:bg-red-50 min-w-25"
+                                onClick={() => handleObligationUpload(item.id)}
+                                disabled={uploadingObligationId === item.id}
+                              >
+                                {uploadingObligationId === item.id ? (
+                                   <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : "Upload Proof"}
+                              </Button>
+                           )}
                         </td>
                       </tr>
                     ))}
@@ -350,11 +464,10 @@ export default function LoanDetailsPage() {
           </Card>
         </TabsContent>
 
-        {/* --- TAB 3: DOCUMENT VAULT --- */}
         <TabsContent value="documents" className="mt-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card className="md:col-span-1 border-dashed border-2 border-zinc-200 bg-zinc-50/50">
-              <CardContent className="flex flex-col items-center justify-center h-full min-h-62.5 p-6 text-center cursor-pointer hover:bg-zinc-50 transition-colors" onClick={handleFileUpload}>
+              <CardContent className="flex flex-col items-center justify-center h-full min-h-62.5 p-6 text-center cursor-pointer hover:bg-zinc-50 transition-colors" onClick={handleVaultUpload}>
                 {uploading ? (
                   <div className="w-full max-w-50 space-y-4">
                     <Loader2 className="h-10 w-10 text-red-600 animate-spin mx-auto" />
@@ -396,11 +509,7 @@ export default function LoanDetailsPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {doc.status === 'verified' ? (
-                          <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50">Verified</Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-yellow-600 border-yellow-200 bg-yellow-50">Scanning</Badge>
-                        )}
+                        <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50">Verified</Badge>
                         <Button variant="ghost" size="icon" className="text-zinc-400 hover:text-zinc-900">
                           <Download className="h-4 w-4" />
                         </Button>
