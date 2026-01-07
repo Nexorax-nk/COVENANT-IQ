@@ -106,7 +106,7 @@ export default function Dashboard() {
                         </Badge>
                       </td>
                       <td className="py-4">
-                        <Link href={`/loan/${loan.id}`} className="text-red-600 font-medium hover:underline text-xs">
+                        <Link href={`/loans/${loan.id}`} className="text-red-600 font-medium hover:underline text-xs">
                           View Details
                         </Link>
                       </td>
