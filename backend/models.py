@@ -14,4 +14,12 @@ class Loan(SQLModel, table=True):
     # We store covenants as a big string (JSON) for simplicity in SQLite
     # In a real Postgres app, you'd use a separate table or JSONB
     covenants_json: str
-    
+
+# NEW: Alert Table
+class Alert(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    loan_id: int
+    message: str
+    type: str = "warning" # critical, warning, info
+    timestamp: datetime = Field(default_factory=datetime.now)
+    is_resolved: bool = False

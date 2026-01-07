@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowUpRight, AlertTriangle, CheckCircle2, FileWarning, FileText, Loader2 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ArrowUpRight, AlertTriangle, CheckCircle2, FileWarning, FileText, Loader2, Check } from "lucide-react";
 import Link from "next/link";
 
 interface Loan {
@@ -16,16 +17,19 @@ interface Loan {
   covenants_json: string;
 }
 
-const MOCK_ALERTS = [
-  { id: 1, message: "Oceanic Shipping: Debt-to-EBITDA projected to breach", type: "critical" },
-  { id: 2, message: "Alpha Construct: Q3 Financials overdue by 2 days", type: "warning" },
-];
+interface Alert {
+  id: number;
+  message: string;
+  type: "critical" | "warning";
+  timestamp: string;
+}
 
 export default function Dashboard() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Stats State
+  // Derived State
+  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [stats, setStats] = useState({
     activeLoans: 0,
     totalCovenants: 0,
@@ -34,39 +38,16 @@ export default function Dashboard() {
   });
 
   const [criticalLoans, setCriticalLoans] = useState<Loan[]>([]);
+  const [watchlistLoans, setWatchlistLoans] = useState<Loan[]>([]);
 
+  // 1. FETCH DATA
   useEffect(() => {
     async function fetchData() {
       try {
         const res = await fetch("http://localhost:8000/api/loans");
         if (!res.ok) throw new Error("Failed to fetch");
-        
         const data: Loan[] = await res.json();
         setLoans(data);
-
-        let covCount = 0;
-        let critical = 0;
-        let watchlist = 0;
-
-        data.forEach(loan => {
-          if (loan.risk_status === "Critical") critical++;
-          if (loan.risk_status === "Watchlist") watchlist++;
-
-          try {
-            const covenants = JSON.parse(loan.covenants_json);
-            covCount += covenants.length;
-          } catch (e) { }
-        });
-
-        setStats({
-          activeLoans: data.length,
-          totalCovenants: covCount,
-          pendingReviews: watchlist,
-          criticalBreaches: critical
-        });
-
-        setCriticalLoans(data.filter(l => l.risk_status === "Critical"));
-
       } catch (error) {
         console.error("Error fetching loans:", error);
       } finally {
@@ -75,6 +56,55 @@ export default function Dashboard() {
     }
     fetchData();
   }, []);
+
+  // 2. RE-CALCULATE STATS & ALERTS WHENEVER DATA CHANGES
+  useEffect(() => {
+    if (loans.length === 0) return;
+
+    let covCount = 0;
+    let critical = 0;
+    let watchlist = 0;
+    const newAlerts: Alert[] = [];
+
+    loans.forEach((loan) => {
+      // Stats
+      if (loan.risk_status === "Critical") critical++;
+      if (loan.risk_status === "Watchlist") watchlist++;
+      try {
+        const covenants = JSON.parse(loan.covenants_json);
+        covCount += covenants.length;
+      } catch (e) { }
+
+      // Generate Dynamic Alerts
+      if (loan.risk_status === "Critical") {
+        newAlerts.push({
+          id: loan.id,
+          message: `${loan.borrower_name}: Financial Covenant Breach Detected`,
+          type: "critical",
+          timestamp: "Just now"
+        });
+      } else if (loan.risk_status === "Watchlist") {
+        newAlerts.push({
+          id: loan.id,
+          message: `${loan.borrower_name}: Trending towards threshold limit`,
+          type: "warning",
+          timestamp: "2 hours ago"
+        });
+      }
+    });
+
+    setStats({
+      activeLoans: loans.length,
+      totalCovenants: covCount,
+      pendingReviews: watchlist,
+      criticalBreaches: critical
+    });
+
+    setCriticalLoans(loans.filter(l => l.risk_status === "Critical"));
+    setWatchlistLoans(loans.filter(l => l.risk_status === "Watchlist"));
+    setAlerts(newAlerts.slice(0, 6)); // Show top 6 alerts
+
+  }, [loans]);
 
   const getRiskScore = (status: string) => {
     if (status === 'Critical') return Math.floor(Math.random() * (99 - 85) + 85);
@@ -130,102 +160,152 @@ export default function Dashboard() {
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Risk Radar Table (SCROLLABLE VERSION) */}
+        {/* INTERACTIVE RISK RADAR */}
         <Card className="col-span-2 border-zinc-200 shadow-sm flex flex-col h-125">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-red-600 animate-pulse" />
-              Risk Radar (Critical Only)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex-1 overflow-hidden p-0"> {/* Remove padding to let scroll hit edges */}
-            {loading ? (
-               <div className="flex justify-center p-8 text-zinc-500">
-                  <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading Risk Data...
-               </div>
-            ) : (
-              // 1. SCROLL CONTAINER
-              <div className="h-full overflow-y-auto"> 
-                <table className="w-full text-sm text-left">
-                  {/* 2. STICKY HEADER */}
-                  <thead className="text-zinc-500 font-medium border-b border-zinc-100 bg-zinc-50 sticky top-0 z-10 shadow-sm">
-                    <tr>
-                      <th className="py-3 pl-6">Borrower</th>
-                      <th className="py-3">Loan Amount</th>
-                      <th className="py-3">Risk Score</th>
-                      <th className="py-3">Status</th>
-                      <th className="py-3 pr-6">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100">
-                    {criticalLoans.length === 0 ? (
-                       <tr><td colSpan={5} className="p-4 text-center text-zinc-400">Great news! No critical loans found.</td></tr>
-                    ) : (
-                      // 3. MAP ALL LOANS (No Slice)
-                      criticalLoans.map((loan) => {
-                        const riskScore = getRiskScore(loan.risk_status);
-                        return (
-                          <tr key={loan.id} className="group hover:bg-zinc-50 transition-colors">
-                            <td className="py-4 pl-6 font-medium text-zinc-900">{loan.borrower_name}</td>
-                            <td className="py-4 text-zinc-600">{loan.loan_amount}</td>
-                            <td className="py-4">
-                              <div className="flex items-center gap-2">
-                                <div className="w-16 h-2 bg-zinc-100 rounded-full overflow-hidden">
-                                  <div 
-                                    className="h-full rounded-full bg-red-600"
-                                    style={{ width: `${riskScore}%` }} 
-                                  />
-                                </div>
-                                <span className="text-xs font-medium text-zinc-500">{riskScore}/100</span>
-                              </div>
-                            </td>
-                            <td className="py-4">
-                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-                                {loan.risk_status}
-                              </Badge>
-                            </td>
-                            <td className="py-4 pr-6">
-                              <Link href={`/loans/${loan.id}`} className="text-red-600 font-medium hover:underline text-xs">
-                                View Details
-                              </Link>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+          <Tabs defaultValue="critical" className="h-full flex flex-col">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-red-600 animate-pulse" />
+                  Risk Radar
+                </CardTitle>
+                <TabsList>
+                  <TabsTrigger value="critical">Critical Breaches ({criticalLoans.length})</TabsTrigger>
+                  <TabsTrigger value="watchlist">Pending Reviews ({watchlistLoans.length})</TabsTrigger>
+                </TabsList>
               </div>
-            )}
-          </CardContent>
+            </CardHeader>
+            
+            <CardContent className="flex-1 overflow-hidden p-0 relative">
+              {loading ? (
+                 <div className="flex justify-center p-8 text-zinc-500 items-center h-full">
+                    <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading Data...
+                 </div>
+              ) : (
+                <>
+                  {/* TAB 1: CRITICAL */}
+                  <TabsContent value="critical" className="h-full overflow-y-auto m-0">
+                    <TableContent 
+                      data={criticalLoans} 
+                      type="critical" 
+                      getRiskScore={getRiskScore}
+                    />
+                  </TabsContent>
+
+                  {/* TAB 2: WATCHLIST (ACTIONABLE) */}
+                  <TabsContent value="watchlist" className="h-full overflow-y-auto m-0">
+                    <TableContent 
+                      data={watchlistLoans} 
+                      type="watchlist" 
+                      getRiskScore={getRiskScore}
+                    />
+                  </TabsContent>
+                </>
+              )}
+            </CardContent>
+          </Tabs>
         </Card>
 
-        {/* Alerts Feed */}
-        <Card className="border-zinc-200 shadow-sm h-fit">
+        {/* DYNAMIC ALERTS FEED */}
+        <Card className="border-zinc-200 shadow-sm h-fit max-h-125 overflow-hidden flex flex-col">
           <CardHeader className="bg-zinc-50/50 border-b border-zinc-100 pb-4">
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
               <FileWarning className="h-5 w-5 text-zinc-500" />
               Recent AI Alerts
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-6 space-y-4">
-            {MOCK_ALERTS.map((alert) => (
-              <div key={alert.id} className="flex gap-3 items-start p-3 rounded-lg border border-zinc-100 hover:border-zinc-200 hover:bg-zinc-50 transition-all cursor-pointer">
-                <div className={`mt-1 h-2 w-2 rounded-full shrink-0 ${alert.type === 'critical' ? 'bg-red-600' : 'bg-yellow-500'}`} />
-                <div>
-                  <p className="text-sm font-medium text-zinc-900 leading-snug">{alert.message}</p>
-                  <p className="text-xs text-zinc-500 mt-1">Detected 2 hours ago via AI Scan</p>
-                </div>
-              </div>
-            ))}
-            <Button variant="outline" className="w-full mt-2 text-zinc-500 border-dashed border-zinc-300">
-              View All Notifications
-            </Button>
+          <CardContent className="pt-0 overflow-y-auto flex-1">
+            <div className="space-y-0 divide-y divide-zinc-100">
+              {alerts.length === 0 ? (
+                <div className="p-6 text-center text-zinc-500 text-sm">No active alerts. Portfolio is healthy.</div>
+              ) : (
+                alerts.map((alert) => (
+                  <div key={alert.id} className="flex gap-3 items-start p-4 hover:bg-zinc-50 transition-all">
+                    <div className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${alert.type === 'critical' ? 'bg-red-600' : 'bg-yellow-500'}`} />
+                    <div>
+                      <p className="text-sm font-medium text-zinc-900 leading-snug">{alert.message}</p>
+                      <p className="text-xs text-zinc-500 mt-1">{alert.timestamp}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </CardContent>
+          <div className="p-3 border-t border-zinc-100 bg-zinc-50/30">
+             <Button variant="ghost" size="sm" className="w-full text-zinc-500 h-8 text-xs">View All Notifications</Button>
+          </div>
         </Card>
 
       </div>
     </div>
+  );
+}
+
+// Sub-component for Table Rows
+function TableContent({ data, type, getRiskScore }: any) {
+  if (data.length === 0) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-zinc-400 space-y-2">
+        <CheckCircle2 className="h-8 w-8 opacity-20" />
+        <p>No loans in this category.</p>
+      </div>
+    );
+  }
+
+  return (
+    <table className="w-full text-sm text-left">
+      <thead className="text-zinc-500 font-medium border-b border-zinc-100 bg-zinc-50 sticky top-0 z-10 shadow-sm">
+        <tr>
+          <th className="py-3 pl-6">Borrower</th>
+          <th className="py-3">Amount</th>
+          <th className="py-3">Risk</th>
+          <th className="py-3 pr-6 text-right">Action</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-zinc-100">
+        {data.map((loan: any) => {
+          const riskScore = getRiskScore(loan.risk_status);
+          return (
+            <tr key={loan.id} className="group hover:bg-zinc-50 transition-colors">
+              <td className="py-4 pl-6">
+                <p className="font-medium text-zinc-900">{loan.borrower_name}</p>
+                <p className="text-xs text-zinc-500">ID: #{loan.id}</p>
+              </td>
+              <td className="py-4 text-zinc-600">{loan.loan_amount}</td>
+              <td className="py-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-12 h-1.5 bg-zinc-100 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full rounded-full ${type === 'critical' ? 'bg-red-600' : 'bg-yellow-500'}`}
+                      style={{ width: `${riskScore}%` }} 
+                    />
+                  </div>
+                  <span className="text-xs font-medium text-zinc-500">{riskScore}</span>
+                </div>
+              </td>
+              <td className="py-4 pr-6 text-right">
+                {type === 'watchlist' ? (
+                  // FIXED: Now links to the dedicated Review Page
+                  <Link href={`/review/${loan.id}`}>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      className="h-7 text-xs border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800"
+                    >
+                      <Check className="h-3 w-3 mr-1" /> Review
+                    </Button>
+                  </Link>
+                ) : (
+                  <Link href={`/loans/${loan.id}`} className="text-red-600 font-medium hover:underline text-xs">
+                    View
+                  </Link>
+                )}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
