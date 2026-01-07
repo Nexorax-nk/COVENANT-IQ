@@ -6,7 +6,7 @@ from database import engine, create_db_and_tables
 from models import Loan
 
 # --- 1. CONFIGURATION ---
-TARGET_LOAN_COUNT = 150
+TARGET_LOAN_COUNT = 139
 
 # --- 2. DATA POOLS (For Random Generation) ---
 PREFIXES = [

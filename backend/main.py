@@ -76,3 +76,10 @@ def create_loan(loan_data: dict, session: Session = Depends(get_session)):
 def read_loans(session: Session = Depends(get_session)):
     loans = session.exec(select(Loan)).all()
     return loans
+# 4. FETCH SINGLE LOAN ROUTE (Add this new function)
+@app.get("/api/loans/{loan_id}", response_model=Loan)
+def read_loan(loan_id: int, session: Session = Depends(get_session)):
+    loan = session.get(Loan, loan_id)
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    return loan

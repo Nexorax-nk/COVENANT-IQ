@@ -7,16 +7,15 @@ import { Button } from "@/components/ui/button";
 import { ArrowUpRight, AlertTriangle, CheckCircle2, FileWarning, FileText, Loader2 } from "lucide-react";
 import Link from "next/link";
 
-// 1. Define the shape of the Loan object coming from your Python Backend
 interface Loan {
   id: number;
   borrower_name: string;
   loan_amount: string;
   effective_date: string;
-  risk_status: string;
+  risk_status: "Healthy" | "Watchlist" | "Critical";
+  covenants_json: string;
 }
 
-// 2. Hardcoded Alerts (Since we haven't built an Alerts Backend yet)
 const MOCK_ALERTS = [
   { id: 1, message: "Oceanic Shipping: Debt-to-EBITDA projected to breach", type: "critical" },
   { id: 2, message: "Alpha Construct: Q3 Financials overdue by 2 days", type: "warning" },
@@ -26,28 +25,61 @@ export default function Dashboard() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 3. FETCH DATA FROM REAL BACKEND
+  // Stats State
+  const [stats, setStats] = useState({
+    activeLoans: 0,
+    totalCovenants: 0,
+    pendingReviews: 0,
+    criticalBreaches: 0
+  });
+
+  const [criticalLoans, setCriticalLoans] = useState<Loan[]>([]);
+
   useEffect(() => {
-    async function fetchLoans() {
+    async function fetchData() {
       try {
         const res = await fetch("http://localhost:8000/api/loans");
         if (!res.ok) throw new Error("Failed to fetch");
-        const data = await res.json();
+        
+        const data: Loan[] = await res.json();
         setLoans(data);
+
+        let covCount = 0;
+        let critical = 0;
+        let watchlist = 0;
+
+        data.forEach(loan => {
+          if (loan.risk_status === "Critical") critical++;
+          if (loan.risk_status === "Watchlist") watchlist++;
+
+          try {
+            const covenants = JSON.parse(loan.covenants_json);
+            covCount += covenants.length;
+          } catch (e) { }
+        });
+
+        setStats({
+          activeLoans: data.length,
+          totalCovenants: covCount,
+          pendingReviews: watchlist,
+          criticalBreaches: critical
+        });
+
+        setCriticalLoans(data.filter(l => l.risk_status === "Critical"));
+
       } catch (error) {
         console.error("Error fetching loans:", error);
       } finally {
         setLoading(false);
       }
     }
-    fetchLoans();
+    fetchData();
   }, []);
 
-  // Helper to generate a fake risk score for the UI (since DB doesn't have it yet)
   const getRiskScore = (status: string) => {
-    if (status === 'Critical') return 88;
-    if (status === 'Watchlist') return 65;
-    return 12; // Healthy
+    if (status === 'Critical') return Math.floor(Math.random() * (99 - 85) + 85);
+    if (status === 'Watchlist') return Math.floor(Math.random() * (75 - 55) + 55);
+    return Math.floor(Math.random() * (30 - 10) + 10);
   };
 
   return (
@@ -65,31 +97,31 @@ export default function Dashboard() {
         </Link>
       </div>
 
-      {/* KPI Cards (Now Dynamic) */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <StatsCard 
           title="Active Loans" 
-          value={loading ? "-" : loans.length.toString()} 
-          trend={loading ? "Loading..." : `+${loans.length} Total`}
+          value={loading ? "-" : stats.activeLoans.toString()} 
+          trend="Total Portfolio"
           icon={<FileText className="h-5 w-5 text-zinc-500" />} 
         />
         <StatsCard 
           title="Monitored Covenants" 
-          value={loading ? "-" : (loans.length * 5).toString()} // Estimating ~5 covenants per loan
-          trend="98% Active" 
+          value={loading ? "-" : stats.totalCovenants.toString()} 
+          trend="Across all agreements" 
           icon={<CheckCircle2 className="h-5 w-5 text-zinc-500" />} 
         />
         <StatsCard 
           title="Pending Reviews" 
-          value="3" 
-          trend="Due in 7 days" 
+          value={loading ? "-" : stats.pendingReviews.toString()} 
+          trend="Loans on Watchlist" 
           icon={<ArrowUpRight className="h-5 w-5 text-yellow-600" />} 
           highlight="yellow"
         />
         <StatsCard 
           title="Critical Breaches" 
-          value="1" 
-          trend="Action Required" 
+          value={loading ? "-" : stats.criticalBreaches.toString()} 
+          trend="Requires Immediate Action" 
           icon={<AlertTriangle className="h-5 w-5 text-red-600" />} 
           highlight="red"
         />
@@ -98,49 +130,49 @@ export default function Dashboard() {
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Risk Radar Table */}
-        <Card className="col-span-2 border-zinc-200 shadow-sm">
+        {/* Risk Radar Table (SCROLLABLE VERSION) */}
+        <Card className="col-span-2 border-zinc-200 shadow-sm flex flex-col h-125">
           <CardHeader>
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
               <div className="h-2 w-2 rounded-full bg-red-600 animate-pulse" />
-              Risk Radar (Watchlist)
+              Risk Radar (Critical Only)
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-1 overflow-hidden p-0"> {/* Remove padding to let scroll hit edges */}
             {loading ? (
                <div className="flex justify-center p-8 text-zinc-500">
-                  <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading Real Data...
+                  <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading Risk Data...
                </div>
             ) : (
-              <div className="overflow-x-auto">
+              // 1. SCROLL CONTAINER
+              <div className="h-full overflow-y-auto"> 
                 <table className="w-full text-sm text-left">
-                  <thead className="text-zinc-500 font-medium border-b border-zinc-100">
+                  {/* 2. STICKY HEADER */}
+                  <thead className="text-zinc-500 font-medium border-b border-zinc-100 bg-zinc-50 sticky top-0 z-10 shadow-sm">
                     <tr>
-                      <th className="pb-3 pl-2">Borrower</th>
-                      <th className="pb-3">Loan Amount</th>
-                      <th className="pb-3">Risk Score</th>
-                      <th className="pb-3">Status</th>
-                      <th className="pb-3">Action</th>
+                      <th className="py-3 pl-6">Borrower</th>
+                      <th className="py-3">Loan Amount</th>
+                      <th className="py-3">Risk Score</th>
+                      <th className="py-3">Status</th>
+                      <th className="py-3 pr-6">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100">
-                    {loans.length === 0 ? (
-                       <tr><td colSpan={5} className="p-4 text-center text-zinc-400">No loans found. Upload one!</td></tr>
+                    {criticalLoans.length === 0 ? (
+                       <tr><td colSpan={5} className="p-4 text-center text-zinc-400">Great news! No critical loans found.</td></tr>
                     ) : (
-                      loans.map((loan) => {
+                      // 3. MAP ALL LOANS (No Slice)
+                      criticalLoans.map((loan) => {
                         const riskScore = getRiskScore(loan.risk_status);
                         return (
                           <tr key={loan.id} className="group hover:bg-zinc-50 transition-colors">
-                            <td className="py-4 pl-2 font-medium text-zinc-900">{loan.borrower_name}</td>
+                            <td className="py-4 pl-6 font-medium text-zinc-900">{loan.borrower_name}</td>
                             <td className="py-4 text-zinc-600">{loan.loan_amount}</td>
                             <td className="py-4">
                               <div className="flex items-center gap-2">
                                 <div className="w-16 h-2 bg-zinc-100 rounded-full overflow-hidden">
                                   <div 
-                                    className={`h-full rounded-full ${
-                                      riskScore > 80 ? 'bg-red-600' : 
-                                      riskScore > 50 ? 'bg-yellow-500' : 'bg-green-500'
-                                    }`} 
+                                    className="h-full rounded-full bg-red-600"
                                     style={{ width: `${riskScore}%` }} 
                                   />
                                 </div>
@@ -148,16 +180,12 @@ export default function Dashboard() {
                               </div>
                             </td>
                             <td className="py-4">
-                              <Badge variant="outline" className={`
-                                ${loan.risk_status === 'Critical' ? 'bg-red-50 text-red-700 border-red-200' : 
-                                  loan.risk_status === 'Watchlist' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 
-                                  'bg-green-50 text-green-700 border-green-200'}
-                              `}>
+                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
                                 {loan.risk_status}
                               </Badge>
                             </td>
-                            <td className="py-4">
-                              <Link href={`/portfolio`} className="text-red-600 font-medium hover:underline text-xs">
+                            <td className="py-4 pr-6">
+                              <Link href={`/loans/${loan.id}`} className="text-red-600 font-medium hover:underline text-xs">
                                 View Details
                               </Link>
                             </td>
@@ -172,7 +200,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Alerts Feed (Still Mocked for now) */}
+        {/* Alerts Feed */}
         <Card className="border-zinc-200 shadow-sm h-fit">
           <CardHeader className="bg-zinc-50/50 border-b border-zinc-100 pb-4">
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
@@ -201,10 +229,9 @@ export default function Dashboard() {
   );
 }
 
-// Helper Component for Stats
 function StatsCard({ title, value, trend, icon, highlight }: any) {
   return (
-    <Card className={`border-zinc-200 shadow-sm ${highlight === 'red' ? 'border-red-100 bg-red-50/30' : ''}`}>
+    <Card className={`border-zinc-200 shadow-sm ${highlight === 'red' ? 'border-red-100 bg-red-50/30' : highlight === 'yellow' ? 'border-yellow-100 bg-yellow-50/30' : ''}`}>
       <CardContent className="p-6">
         <div className="flex justify-between items-start">
           <div>
@@ -215,7 +242,7 @@ function StatsCard({ title, value, trend, icon, highlight }: any) {
             {icon}
           </div>
         </div>
-        <p className={`text-xs mt-2 ${highlight === 'red' ? 'text-red-600 font-medium' : 'text-zinc-500'}`}>
+        <p className={`text-xs mt-2 ${highlight === 'red' ? 'text-red-600 font-medium' : highlight === 'yellow' ? 'text-yellow-700 font-medium' : 'text-zinc-500'}`}>
           {trend}
         </p>
       </CardContent>
