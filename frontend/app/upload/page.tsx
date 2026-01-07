@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { UploadCloud, FileText, CheckCircle2, Loader2, ShieldCheck, AlertCircle } from "lucide-react";
+import { UploadCloud, FileText, CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
 
 // Define the shape of data we expect from our Python Backend
 interface ExtractedData {
@@ -29,7 +29,7 @@ export default function UploadPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [data, setData] = useState<ExtractedData | null>(null);
 
-  // REAL BACKEND INTEGRATION
+  // 1. UPLOAD & ANALYZE (The AI Step)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.[0]) return;
 
@@ -41,7 +41,6 @@ export default function UploadPage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      // Call your FastAPI Backend
       const response = await fetch("http://localhost:8000/api/analyze", {
         method: "POST",
         body: formData,
@@ -50,30 +49,52 @@ export default function UploadPage() {
       if (!response.ok) throw new Error("Analysis failed");
 
       const result = await response.json();
-      setData(result); // Save the real AI data
+      setData(result);
       setStep("review");
       
     } catch (error) {
       console.error(error);
-      alert("Error analyzing file. Please ensure the backend is running.");
+      alert("Error analyzing file. Is the backend running?");
       setStep("upload");
     } finally {
       setIsLoading(false);
     }
   };
 
+  // 2. SAVE TO DATABASE (The Missing Step)
+  const handleConfirm = async () => {
+    if (!data) return;
+
+    try {
+      // This sends the data to your SQLite database
+      const response = await fetch("http://localhost:8000/api/loans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data), 
+      });
+
+      if (response.ok) {
+        // Only redirect IF the save was successful
+        router.push('/'); 
+      } else {
+        alert("Failed to save loan to database.");
+      }
+    } catch (error) {
+      console.error("Error saving:", error);
+      alert("Connection error. Ensure backend is running.");
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-8">
-      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900">New Agreement Analysis</h1>
-        <p className="text-zinc-500 mt-1">Upload a loan agreement (PDF) to extract covenants using OpenAI.</p>
+        <p className="text-zinc-500 mt-1">Upload a loan agreement (PDF) to extract covenants using AI.</p>
       </div>
 
       {/* STEP 1: UPLOAD BOX */}
       {step === "upload" && (
         <Card className="border-dashed border-2 border-zinc-300 shadow-none hover:bg-zinc-50/50 transition-all cursor-pointer h-96 flex flex-col items-center justify-center text-center relative">
-          {/* Invisible File Input covering the card */}
           <input 
             type="file" 
             accept="application/pdf"
@@ -90,7 +111,7 @@ export default function UploadPage() {
         </Card>
       )}
 
-      {/* STEP 2: REAL LOADING STATE */}
+      {/* STEP 2: PROCESSING STATE */}
       {step === "processing" && (
         <Card className="h-96 flex flex-col items-center justify-center text-center border-zinc-200">
           <div className="w-full max-w-md space-y-6">
@@ -100,9 +121,8 @@ export default function UploadPage() {
                 <Loader2 className="h-16 w-16 text-red-600 animate-spin relative z-10" />
               </div>
             </div>
-            
             <div className="space-y-2">
-              <h3 className="text-xl font-semibold text-zinc-900 animate-pulse">Analyzing with OpenAI...</h3>
+              <h3 className="text-xl font-semibold text-zinc-900 animate-pulse">Analyzing with AI...</h3>
               <p className="text-zinc-500 text-sm">Extracting covenants and financial definitions.</p>
               <Progress value={66} className="h-2 w-full bg-zinc-100 animate-pulse" />
             </div>
@@ -110,17 +130,17 @@ export default function UploadPage() {
         </Card>
       )}
 
-      {/* STEP 3: RESULTS & REVIEW (Populated with REAL Data) */}
+      {/* STEP 3: REVIEW & CONFIRM */}
       {step === "review" && data && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
           
-          {/* LEFT: PDF PREVIEW */}
+          {/* LEFT: VISUAL */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-zinc-900 flex items-center gap-2">
                 <FileText className="h-4 w-4" /> Document Source
               </h3>
-              <span className="text-xs bg-zinc-100 px-2 py-1 rounded text-zinc-500">Processed via GPT-4o</span>
+              <span className="text-xs bg-zinc-100 px-2 py-1 rounded text-zinc-500">Processed via Llama-3.3</span>
             </div>
             <div className="h-150 bg-zinc-900 rounded-lg border border-zinc-800 flex items-center justify-center relative overflow-hidden">
                <div className="text-center">
@@ -130,7 +150,7 @@ export default function UploadPage() {
             </div>
           </div>
 
-          {/* RIGHT: EXTRACTED DATA FORM */}
+          {/* RIGHT: DATA FORM */}
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-zinc-900 flex items-center gap-2">
@@ -183,17 +203,11 @@ export default function UploadPage() {
                       </div>
                     </div>
                   ))}
-                  
-                  {data.covenants.length === 0 && (
-                    <div className="p-4 text-center text-sm text-zinc-500 bg-zinc-50 rounded border border-dashed">
-                      No specific financial covenants found in this document section.
-                    </div>
-                  )}
                 </div>
 
                 <Button 
                   className="w-full bg-red-600 hover:bg-red-700 text-white mt-4"
-                  onClick={() => router.push('/')}
+                  onClick={handleConfirm} 
                 >
                   <CheckCircle2 className="mr-2 h-4 w-4" /> Confirm & Add to Portfolio
                 </Button>
