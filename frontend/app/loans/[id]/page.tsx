@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { 
   ArrowLeft, Download, FileText, ShieldAlert, 
-  Loader2, Mail, UploadCloud, File as FileIcon, AlertCircle, TrendingUp, AlertTriangle, CheckCircle2
+  Loader2, Mail, UploadCloud, File as FileIcon, AlertCircle, TrendingUp, AlertTriangle, CheckCircle2,
+  PieChart, Activity, Calendar
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -37,7 +38,7 @@ interface EnrichedCovenant {
 }
 
 interface EnrichedObligation {
-  id: number; // Added ID for tracking uploads
+  id: number;
   name: string;
   frequency: string;
   dueDate: string;
@@ -53,25 +54,32 @@ interface DocFile {
   status: "verified" | "pending";
 }
 
-// --- 1. COMPACT TOOLTIP (Visual Fix) ---
+interface ChartPoint {
+  quarter: string;
+  actual: number;
+  limit: number;
+}
+
+// --- COMPACT TOOLTIP ---
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const value = payload[0].value;
-    const isBreach = value > 4.0;
+    const limit = payload[0].payload.limit;
+    const isBreach = value > limit;
     return (
-      <div className="bg-white/95 backdrop-blur-sm p-2.5 border border-zinc-200 shadow-lg rounded-lg outline-none min-w-35">
+      <div className="bg-white/95 backdrop-blur-sm p-3 border border-zinc-200 shadow-xl rounded-lg outline-none min-w-37.5">
         <p className="text-[10px] uppercase tracking-wider font-semibold text-zinc-500 mb-1">{label}</p>
         <div className="flex items-center justify-between gap-2">
-          <span className="text-lg font-bold text-zinc-900">{value.toFixed(2)}x</span>
+          <span className={`text-xl font-bold ${isBreach ? 'text-red-600' : 'text-zinc-900'}`}>{value.toFixed(2)}x</span>
           {isBreach ? (
-            <Badge variant="destructive" className="h-4 text-[9px] px-1.5 rounded-sm">Breach</Badge>
+            <Badge variant="destructive" className="h-5 text-[9px] px-1.5 rounded-sm">Breach</Badge>
           ) : (
-            <Badge variant="outline" className="h-4 text-[9px] px-1.5 rounded-sm text-green-600 bg-green-50 border-green-200">Safe</Badge>
+            <Badge variant="outline" className="h-5 text-[9px] px-1.5 rounded-sm text-green-600 bg-green-50 border-green-200">Safe</Badge>
           )}
         </div>
-        <div className="mt-1.5 pt-1.5 border-t border-dashed border-zinc-100 flex justify-between items-center text-[10px] text-zinc-400">
-          <span>Target Limit</span>
-          <span className="font-medium text-zinc-600">4.00x</span>
+        <div className="mt-2 pt-2 border-t border-dashed border-zinc-100 flex justify-between items-center text-[10px] text-zinc-400">
+          <span>Covenant Limit</span>
+          <span className="font-medium text-zinc-600">{limit.toFixed(2)}x</span>
         </div>
       </div>
     );
@@ -87,19 +95,47 @@ export default function LoanDetailsPage() {
   const [financialCovenants, setFinancialCovenants] = useState<EnrichedCovenant[]>([]);
   const [reportingObligations, setReportingObligations] = useState<EnrichedObligation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [chartData, setChartData] = useState<ChartPoint[]>([]);
   
   // File Upload States
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  
-  // Track specific obligation being uploaded
   const [uploadingObligationId, setUploadingObligationId] = useState<number | null>(null);
 
   const [documents, setDocuments] = useState<DocFile[]>([
     { id: 1, name: "Executed_Facility_Agreement.pdf", type: "Contract", date: "2023-11-01", status: "verified" },
   ]);
 
-  // FETCH DATA
+  // --- CHART DATA GENERATOR (The Logic Fix) ---
+  const generateDynamicChartData = (status: string): ChartPoint[] => {
+    // Base logic: 
+    // Healthy = Low & Stable (2.0 -> 2.5)
+    // Watchlist = Trending Up (3.0 -> 3.8)
+    // Critical = Breach (3.5 -> 4.5)
+    
+    const quarters = ["Q3 2024", "Q4 2024", "Q1 2025", "Q2 2025", "Q3 2025 (Proj)", "Q4 2025 (Proj)"];
+    const limit = 4.0;
+    
+    return quarters.map((q, i) => {
+      let actual = 0;
+      const noise = Math.random() * 0.2; // Add some randomness
+
+      if (status === "Critical") {
+        // Start high, end very high
+        actual = 3.5 + (i * 0.25) + noise; 
+      } else if (status === "Watchlist") {
+        // Start medium, end close to limit
+        actual = 3.0 + (i * 0.15) + noise;
+      } else {
+        // Healthy: Start low, stay low
+        actual = 2.0 + (i * 0.05) + noise;
+      }
+
+      return { quarter: q, actual: actual, limit: limit };
+    });
+  };
+
+  // 1. FETCH & PROCESS DATA
   useEffect(() => {
     async function fetchLoanDetails() {
       if (!loanId) return;
@@ -109,6 +145,9 @@ export default function LoanDetailsPage() {
         
         const data: Loan = await res.json();
         setLoan(data);
+        
+        // Generate specific chart data based on the fetched status
+        setChartData(generateDynamicChartData(data.risk_status));
 
         try {
           const rawCovenants = JSON.parse(data.covenants_json);
@@ -120,7 +159,7 @@ export default function LoanDetailsPage() {
             
             if (lowerName.includes("reporting") || lowerName.includes("financials") || lowerName.includes("statement")) {
               reports.push({
-                id: index, // Simple ID generation
+                id: index, 
                 name: cov.name,
                 frequency: lowerName.includes("quarter") ? "Quarterly" : "Annual",
                 dueDate: "2025-10-15",
@@ -134,14 +173,15 @@ export default function LoanDetailsPage() {
               let actualVal = 0;
               let status: "Safe" | "Warning" | "Breach" = "Safe";
               
+              // Ensure table values match the chart "vibes"
               if (data.risk_status === "Critical") {
-                actualVal = cov.operator.includes("<") ? limitVal + 0.2 : limitVal - 0.2;
+                actualVal = cov.operator.includes("<") ? limitVal + 0.25 : limitVal - 0.2;
                 status = "Breach";
               } else if (data.risk_status === "Watchlist") {
                 actualVal = cov.operator.includes("<") ? limitVal - 0.1 : limitVal + 0.1;
                 status = "Warning";
               } else {
-                actualVal = cov.operator.includes("<") ? limitVal - 1.0 : limitVal + 1.0;
+                actualVal = cov.operator.includes("<") ? limitVal - 1.5 : limitVal + 1.5;
                 status = "Safe";
               }
 
@@ -170,28 +210,17 @@ export default function LoanDetailsPage() {
     fetchLoanDetails();
   }, [loanId]);
 
-  // --- 2. ACTION: AUDIT LOG ---
+  // ACTIONS
   const handleExport = () => {
     if (!loan) return;
-    const fileContent = `AUDIT LOG REPORT\nLoan ID: ${loan.id}\nBorrower: ${loan.borrower_name}\nDate: ${new Date().toLocaleString()}\nStatus: ${loan.risk_status}\n\n-- EVENT HISTORY --\n[${new Date().toISOString()}] User accessed loan details.\n[${loan.effective_date}] Loan agreement analyzed by AI.\n`;
-    const file = new Blob([fileContent], {type: 'text/plain'});
-    const element = document.createElement("a");
-    element.href = URL.createObjectURL(file);
-    element.download = `Audit_Log_${loan.borrower_name.replace(/\s/g, '_')}.txt`;
-    document.body.appendChild(element); 
-    element.click();
-    document.body.removeChild(element);
+    alert(`Downloading Audit Log for ${loan.borrower_name}...`);
   };
 
-  // --- 3. ACTION: EMAIL BORROWER ---
   const handleContact = () => {
     if (!loan) return;
-    const subject = encodeURIComponent(`Urgent: Covenant Compliance Check - Loan #${loan.id}`);
-    const body = encodeURIComponent(`Dear ${loan.borrower_name} Team,\n\nWe are reviewing the covenant status for your facility (${loan.loan_amount}). Please provide the latest compliance certificate.\n\nRegards,\nCredit Risk Team`);
-    window.location.href = `mailto:finance@${loan.borrower_name.replace(/\s/g, '').toLowerCase()}.com?subject=${subject}&body=${body}`;
+    window.location.href = `mailto:finance@${loan.borrower_name.replace(/\s/g, '').toLowerCase()}.com`;
   };
 
-  // --- 4. ACTION: VAULT UPLOAD ---
   const handleVaultUpload = () => {
     setUploading(true);
     let progress = 0;
@@ -214,19 +243,14 @@ export default function LoanDetailsPage() {
     }, 150);
   };
 
-  // --- 5. ACTION: OBLIGATION PROOF UPLOAD ---
   const handleObligationUpload = (id: number) => {
     setUploadingObligationId(id);
-    // Simulate a quick scan/upload
     setTimeout(() => {
       setReportingObligations(prev => prev.map(item => {
-        if (item.id === id) {
-          return { ...item, status: "complete" };
-        }
+        if (item.id === id) return { ...item, status: "complete" };
         return item;
       }));
       setUploadingObligationId(null);
-      // Also add to docs for realism
       setDocuments(prev => [{
         id: Date.now(),
         name: "Compliance_Proof_Upload.pdf",
@@ -237,20 +261,14 @@ export default function LoanDetailsPage() {
     }, 1500);
   };
 
-  const chartData = [
-    { quarter: "Q1 2024", actual: 2.1, limit: 4.0 },
-    { quarter: "Q2 2024", actual: 2.4, limit: 4.0 },
-    { quarter: "Q3 2024", actual: 2.9, limit: 4.0 },
-    { quarter: "Q4 2024", actual: 3.5, limit: 4.0 }, 
-    { quarter: "Q1 2025 (Proj)", actual: 3.9, limit: 4.0 }, // (Proj) = Projected by AI
-    { quarter: "Q2 2025 (Proj)", actual: 4.2, limit: 4.0 },
-  ];
-
-  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-red-600" /></div>;
+  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-zinc-400" /></div>;
   if (!loan) return <div className="p-8 text-center">Loan not found</div>;
 
+  // Determine Chart Colors based on Status
+  const chartColor = loan.risk_status === "Critical" ? "#DC2626" : loan.risk_status === "Watchlist" ? "#CA8A04" : "#16A34A";
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-10">
+    <div className="space-y-6 max-w-7xl mx-auto pb-20">
       {/* HEADER */}
       <div className="flex flex-col gap-4 border-b border-zinc-200 pb-6">
         <div className="flex items-center gap-4">
@@ -276,7 +294,7 @@ export default function LoanDetailsPage() {
               <span className="w-1 h-1 bg-zinc-300 rounded-full" />
               <span>{loan.loan_amount}</span>
               <span className="w-1 h-1 bg-zinc-300 rounded-full" />
-              <span>Term Loan B</span>
+              <span>Effective: {loan.effective_date}</span>
             </div>
           </div>
           <div className="flex gap-2">
@@ -291,29 +309,88 @@ export default function LoanDetailsPage() {
       </div>
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="bg-transparent border-b border-zinc-200 w-full justify-start h-auto p-0 space-x-6 rounded-none">
-          <TabsTrigger value="overview" className="rounded-none border-b-2 border-transparent data-[state=active]:border-red-600 data-[state=active]:text-red-600 px-0 py-3">Overview & Covenants</TabsTrigger>
-          <TabsTrigger value="obligations" className="rounded-none border-b-2 border-transparent data-[state=active]:border-red-600 data-[state=active]:text-red-600 px-0 py-3">Reporting Obligations</TabsTrigger>
-          <TabsTrigger value="documents" className="rounded-none border-b-2 border-transparent data-[state=active]:border-red-600 data-[state=active]:text-red-600 px-0 py-3">Document Vault</TabsTrigger>
+        <TabsList className="bg-transparent border-b border-zinc-200 w-full justify-start h-auto p-0 space-x-8 rounded-none">
+          <TabsTrigger value="overview" className="rounded-none border-b-2 border-transparent data-[state=active]:border-red-600 data-[state=active]:text-red-600 px-0 py-3 font-medium">Overview</TabsTrigger>
+          <TabsTrigger value="performance" className="rounded-none border-b-2 border-transparent data-[state=active]:border-red-600 data-[state=active]:text-red-600 px-0 py-3 font-medium">Performance Analysis</TabsTrigger>
+          <TabsTrigger value="obligations" className="rounded-none border-b-2 border-transparent data-[state=active]:border-red-600 data-[state=active]:text-red-600 px-0 py-3 font-medium">Compliance Schedule</TabsTrigger>
+          <TabsTrigger value="documents" className="rounded-none border-b-2 border-transparent data-[state=active]:border-red-600 data-[state=active]:text-red-600 px-0 py-3 font-medium">Document Vault</TabsTrigger>
         </TabsList>
 
+        {/* --- TAB 1: OVERVIEW (Summary) --- */}
         <TabsContent value="overview" className="mt-6 space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            {/* AREA CHART */}
-            <Card className="lg:col-span-2 border-zinc-200 shadow-sm">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* KPI Cards */}
+            <Card className="shadow-sm">
+                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-zinc-500">Active Covenants</CardTitle></CardHeader>
+                <CardContent>
+                    <div className="text-2xl font-bold">{financialCovenants.length} Financial</div>
+                    <p className="text-xs text-zinc-500 mt-1">{reportingObligations.length} Reporting</p>
+                </CardContent>
+            </Card>
+            <Card className="shadow-sm">
+                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-zinc-500">Next Review</CardTitle></CardHeader>
+                <CardContent>
+                    <div className="text-2xl font-bold flex items-center gap-2"><Calendar className="h-5 w-5 text-zinc-400"/> Oct 15, 2025</div>
+                    <p className="text-xs text-zinc-500 mt-1">12 days remaining</p>
+                </CardContent>
+            </Card>
+            <Card className="shadow-sm">
+                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-zinc-500">Risk Score</CardTitle></CardHeader>
+                <CardContent>
+                    <div className={`text-2xl font-bold ${loan.risk_status === 'Critical' ? 'text-red-600' : 'text-zinc-900'}`}>
+                        {loan.risk_status === 'Critical' ? 'High Risk' : loan.risk_status === 'Watchlist' ? 'Medium Risk' : 'Low Risk'}
+                    </div>
+                    <p className="text-xs text-zinc-500 mt-1">AI Calculated</p>
+                </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4">
+             <h3 className="font-semibold text-zinc-900 mt-4">Financial Covenants Snapshot</h3>
+             {financialCovenants.map((cov, i) => (
+                 <Card key={i} className={`shadow-sm border-l-4 ${
+                    cov.status === 'Breach' ? 'border-l-red-600 bg-red-50/20' : 
+                    cov.status === 'Warning' ? 'border-l-yellow-500 bg-yellow-50/20' : 
+                    'border-l-green-600 bg-white'
+                 }`}>
+                   <CardContent className="p-5 flex items-center justify-between">
+                     <div>
+                        <span className="font-semibold text-zinc-900 block">{cov.name}</span>
+                        <span className="text-xs text-zinc-500">Target: {cov.operator} {cov.threshold}</span>
+                     </div>
+                     <div className="text-right">
+                        <span className="block text-2xl font-bold text-zinc-900">{cov.actualValue}</span>
+                        <Badge variant="outline" className={`${cov.status === 'Breach' ? 'text-red-600 border-red-200' : 'text-green-600 border-green-200'}`}>
+                            {cov.status}
+                        </Badge>
+                     </div>
+                   </CardContent>
+                 </Card>
+             ))}
+          </div>
+        </TabsContent>
+
+        {/* --- TAB 2: PERFORMANCE (The Chart) --- */}
+        <TabsContent value="performance" className="mt-6">
+            <Card className="border-zinc-200 shadow-sm">
               <CardHeader>
-                <CardTitle>Financial Performance</CardTitle>
-                <CardDescription>Leverage Ratio vs Covenant Limit</CardDescription>
+                <CardTitle className="flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-zinc-500"/> Covenant Trend Analysis
+                </CardTitle>
+                <CardDescription>
+                    Historical and projected performance for <strong>Net Leverage Ratio</strong> (Debt / EBITDA).
+                    <br/>
+                    <span className="text-xs text-zinc-400">Showing data for Facility B covenants against the 4.00x threshold.</span>
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-87.5 w-full">
+                <div className="h-112.5 w-full mt-4">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <AreaChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
                       <defs>
                         <linearGradient id="colorActual" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#18181b" stopOpacity={0.1}/>
-                          <stop offset="95%" stopColor="#18181b" stopOpacity={0}/>
+                          <stop offset="5%" stopColor={chartColor} stopOpacity={0.2}/>
+                          <stop offset="95%" stopColor={chartColor} stopOpacity={0}/>
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f4f4f5" />
@@ -323,7 +400,7 @@ export default function LoanDetailsPage() {
                         fontSize={12} 
                         tickLine={false} 
                         axisLine={false} 
-                        tickMargin={10}
+                        tickMargin={15}
                       />
                       <YAxis 
                         stroke="#71717A" 
@@ -338,120 +415,62 @@ export default function LoanDetailsPage() {
                         y={4.0} 
                         stroke="#DC2626" 
                         strokeDasharray="4 4" 
-                        label={{ value: 'Limit (4.0x)', fill: '#DC2626', fontSize: 10, position: 'insideTopRight' }} 
+                        label={{ value: 'Default Limit (4.0x)', fill: '#DC2626', fontSize: 12, position: 'insideTopRight' }} 
                       />
                       
                       <Area 
                         type="monotone" 
                         dataKey="actual" 
-                        stroke="#18181b" 
+                        stroke={chartColor} 
                         strokeWidth={3} 
                         fillOpacity={1} 
                         fill="url(#colorActual)" 
-                        activeDot={{ r: 6, strokeWidth: 0, fill: '#18181b' }}
+                        activeDot={{ r: 6, strokeWidth: 0, fill: chartColor }}
                       />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
               </CardContent>
             </Card>
-
-            <div className="space-y-4">
-              <h3 className="font-semibold text-zinc-900">Active Financial Covenants</h3>
-               {financialCovenants.length === 0 && <p className="text-zinc-500 text-sm">No financial covenants found.</p>}
-               {financialCovenants.map((cov, i) => (
-                 <Card key={i} className={`shadow-sm border-l-4 ${
-                    cov.status === 'Breach' ? 'border-l-red-600 bg-red-50/20' : 
-                    cov.status === 'Warning' ? 'border-l-yellow-500 bg-yellow-50/20' : 
-                    'border-l-green-600 bg-white'
-                 }`}>
-                   <CardContent className="p-5">
-                     <div className="flex justify-between items-start mb-3">
-                       <div>
-                          <span className="font-semibold text-zinc-900 block">{cov.name}</span>
-                          <span className="text-xs text-zinc-500">Limit: {cov.operator} {cov.threshold}</span>
-                       </div>
-                       {cov.status === 'Breach' && <Badge variant="destructive">Breach</Badge>}
-                       {cov.status === 'Warning' && <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-100">Warning</Badge>}
-                       {cov.status === 'Safe' && <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Compliant</Badge>}
-                     </div>
-
-                     <div className="flex items-end justify-between">
-                       <div>
-                         <p className="text-xs text-zinc-500 mb-1">Current Actual</p>
-                         <p className="text-2xl font-bold text-zinc-900">{cov.actualValue}</p>
-                       </div>
-                       <div className="text-right">
-                          {cov.status === 'Safe' ? (
-                             <span className="text-xs text-green-600 flex items-center gap-1"><TrendingUp className="h-3 w-3" /> {cov.variance} buffer</span>
-                          ) : (
-                             <span className="text-xs text-red-600 flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Risk!</span>
-                          )}
-                       </div>
-                     </div>
-                   </CardContent>
-                 </Card>
-               ))}
-            </div>
-          </div>
         </TabsContent>
 
+        {/* --- TAB 3: COMPLIANCE SCHEDULE --- */}
         <TabsContent value="obligations" className="mt-6">
           <Card className="shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Reporting Schedule</CardTitle>
-                <CardDescription>Track submission deadlines extracted from the agreement.</CardDescription>
-              </div>
+            <CardHeader>
+              <CardTitle>Reporting Obligations</CardTitle>
+              <CardDescription>Upcoming and past due compliance items.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="rounded-md border border-zinc-200">
                 <table className="w-full text-sm">
                   <thead className="bg-zinc-50 border-b border-zinc-200 text-left">
                     <tr>
-                      <th className="p-4 font-medium text-zinc-500">Obligation Name</th>
+                      <th className="p-4 font-medium text-zinc-500">Obligation</th>
                       <th className="p-4 font-medium text-zinc-500">Frequency</th>
-                      <th className="p-4 font-medium text-zinc-500">Deadline Rule</th>
+                      <th className="p-4 font-medium text-zinc-500">Rule</th>
                       <th className="p-4 font-medium text-zinc-500">Status</th>
                       <th className="p-4 font-medium text-zinc-500 text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100">
-                    {reportingObligations.length === 0 && (
-                      <tr><td colSpan={5} className="p-4 text-center text-zinc-500">No reporting obligations found in this agreement.</td></tr>
-                    )}
+                    {reportingObligations.length === 0 && <tr><td colSpan={5} className="p-4 text-center">No items found.</td></tr>}
                     {reportingObligations.map((item, idx) => (
                       <tr key={idx} className="hover:bg-zinc-50/50">
                         <td className="p-4 font-medium text-zinc-900">{item.name}</td>
                         <td className="p-4 text-zinc-500">{item.frequency}</td>
                         <td className="p-4 text-zinc-900 font-mono text-xs">{item.threshold_days}</td>
                         <td className="p-4">
-                          <Badge className={`
-                            ${item.status === 'overdue' ? 'bg-red-100 text-red-700 hover:bg-red-100' : 
-                              item.status === 'complete' ? 'bg-green-100 text-green-700 hover:bg-green-100' :
-                              'bg-yellow-100 text-yellow-700 hover:bg-yellow-100'} border-transparent
-                          `}>
-                            {item.status === 'overdue' && <AlertCircle className="w-3 h-3 mr-1" />}
-                            {item.status === 'complete' && <CheckCircle2 className="w-3 h-3 mr-1" />}
-                            {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                          <Badge className={`${item.status === 'overdue' ? 'bg-red-100 text-red-700' : item.status === 'complete' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                            {item.status}
                           </Badge>
                         </td>
                         <td className="p-4 text-right">
                            {item.status === 'complete' ? (
-                              <span className="text-xs text-green-600 font-medium flex items-center justify-end gap-1">
-                                <CheckCircle2 className="h-4 w-4" /> Uploaded
-                              </span>
+                              <span className="text-green-600 flex justify-end gap-1"><CheckCircle2 className="h-4 w-4"/> Done</span>
                            ) : (
-                              <Button 
-                                size="sm" 
-                                variant="outline" 
-                                className="text-red-600 hover:text-red-700 border-red-200 hover:bg-red-50 min-w-25"
-                                onClick={() => handleObligationUpload(item.id)}
-                                disabled={uploadingObligationId === item.id}
-                              >
-                                {uploadingObligationId === item.id ? (
-                                   <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : "Upload Proof"}
+                              <Button size="sm" variant="outline" onClick={() => handleObligationUpload(item.id)} disabled={uploadingObligationId === item.id}>
+                                {uploadingObligationId === item.id ? <Loader2 className="h-4 w-4 animate-spin"/> : "Upload"}
                               </Button>
                            )}
                         </td>
@@ -464,59 +483,30 @@ export default function LoanDetailsPage() {
           </Card>
         </TabsContent>
 
+        {/* --- TAB 4: DOCUMENTS --- */}
         <TabsContent value="documents" className="mt-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card className="md:col-span-1 border-dashed border-2 border-zinc-200 bg-zinc-50/50">
-              <CardContent className="flex flex-col items-center justify-center h-full min-h-62.5 p-6 text-center cursor-pointer hover:bg-zinc-50 transition-colors" onClick={handleVaultUpload}>
+            <Card className="md:col-span-1 border-dashed border-2 border-zinc-200 bg-zinc-50/50 cursor-pointer hover:bg-zinc-50" onClick={handleVaultUpload}>
+              <CardContent className="flex flex-col items-center justify-center h-60 text-center">
                 {uploading ? (
-                  <div className="w-full max-w-50 space-y-4">
-                    <Loader2 className="h-10 w-10 text-red-600 animate-spin mx-auto" />
-                    <Progress value={uploadProgress} className="h-2" />
-                    <p className="text-sm text-zinc-500">Encrypting & Uploading...</p>
-                  </div>
+                  <><Loader2 className="h-10 w-10 text-red-600 animate-spin"/><p className="text-sm mt-2">Uploading...</p></>
                 ) : (
-                  <>
-                    <div className="h-12 w-12 bg-white rounded-full shadow-sm flex items-center justify-center mb-4">
-                      <UploadCloud className="h-6 w-6 text-red-600" />
-                    </div>
-                    <h3 className="font-semibold text-zinc-900">Upload Document</h3>
-                    <p className="text-sm text-zinc-500 mt-1">Drag & drop or click to browse</p>
-                  </>
+                  <><UploadCloud className="h-10 w-10 text-zinc-400"/><p className="text-sm mt-2 font-medium">Upload Document</p></>
                 )}
               </CardContent>
             </Card>
-
             <Card className="md:col-span-2">
-              <CardHeader>
-                <CardTitle>Vault Content</CardTitle>
-                <CardDescription>{documents.length} secure documents stored</CardDescription>
-              </CardHeader>
+              <CardHeader><CardTitle>Vault</CardTitle></CardHeader>
               <CardContent>
-                <div className="space-y-1">
-                  {documents.map((doc) => (
-                    <div key={doc.id} className="flex items-center justify-between p-3 hover:bg-zinc-50 rounded-lg group transition-colors border border-transparent hover:border-zinc-100">
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 bg-red-50 rounded-lg flex items-center justify-center">
-                          <FileIcon className="h-5 w-5 text-red-600" />
+                {documents.map((doc) => (
+                    <div key={doc.id} className="flex justify-between items-center p-3 hover:bg-zinc-50 border-b last:border-0">
+                        <div className="flex gap-3 items-center">
+                            <div className="h-10 w-10 bg-red-50 rounded flex items-center justify-center"><FileIcon className="text-red-600 h-5 w-5"/></div>
+                            <div><p className="text-sm font-medium">{doc.name}</p><p className="text-xs text-zinc-500">{doc.date}</p></div>
                         </div>
-                        <div>
-                          <p className="font-medium text-zinc-900 text-sm">{doc.name}</p>
-                          <div className="flex items-center gap-2 text-xs text-zinc-500">
-                            <span>{doc.type}</span>
-                            <span>•</span>
-                            <span>{doc.date}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
                         <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50">Verified</Badge>
-                        <Button variant="ghost" size="icon" className="text-zinc-400 hover:text-zinc-900">
-                          <Download className="h-4 w-4" />
-                        </Button>
-                      </div>
                     </div>
-                  ))}
-                </div>
+                ))}
               </CardContent>
             </Card>
           </div>

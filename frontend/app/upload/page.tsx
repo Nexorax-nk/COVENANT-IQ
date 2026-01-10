@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { UploadCloud, FileText, CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
+import { UploadCloud, FileText, CheckCircle2, Loader2, ShieldCheck, PencilLine } from "lucide-react";
 
 // Define the shape of data we expect from our Python Backend
 interface ExtractedData {
@@ -61,12 +61,26 @@ export default function UploadPage() {
     }
   };
 
-  // 2. SAVE TO DATABASE (The Missing Step)
+  // 2. UPDATE HANDLERS (Fixes the "Edit not working" issue)
+  const updateMainField = (field: keyof ExtractedData, value: string) => {
+    if (!data) return;
+    setData({ ...data, [field]: value });
+  };
+
+  const updateCovenant = (index: number, field: string, value: string) => {
+    if (!data) return;
+    const updatedCovenants = [...data.covenants];
+    // @ts-ignore
+    updatedCovenants[index][field] = value;
+    setData({ ...data, covenants: updatedCovenants });
+  };
+
+  // 3. SAVE TO DATABASE
   const handleConfirm = async () => {
     if (!data) return;
 
     try {
-      // This sends the data to your SQLite database
+      // This sends the *edited* data to your SQLite database
       const response = await fetch("http://localhost:8000/api/loans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -74,7 +88,6 @@ export default function UploadPage() {
       });
 
       if (response.ok) {
-        // Only redirect IF the save was successful
         router.push('/'); 
       } else {
         alert("Failed to save loan to database.");
@@ -86,7 +99,7 @@ export default function UploadPage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
+    <div className="max-w-6xl mx-auto space-y-8 pb-20">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900">New Agreement Analysis</h1>
         <p className="text-zinc-500 mt-1">Upload a loan agreement (PDF) to extract covenants using AI.</p>
@@ -94,15 +107,15 @@ export default function UploadPage() {
 
       {/* STEP 1: UPLOAD BOX */}
       {step === "upload" && (
-        <Card className="border-dashed border-2 border-zinc-300 shadow-none hover:bg-zinc-50/50 transition-all cursor-pointer h-96 flex flex-col items-center justify-center text-center relative">
+        <Card className="border-dashed border-2 border-zinc-300 shadow-none hover:bg-zinc-50/50 transition-all cursor-pointer h-96 flex flex-col items-center justify-center text-center relative group">
           <input 
             type="file" 
             accept="application/pdf"
             onChange={handleFileUpload}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
           />
-          <div className="p-4 bg-zinc-100 rounded-full mb-4">
-            <UploadCloud className="h-10 w-10 text-zinc-400" />
+          <div className="p-4 bg-zinc-100 rounded-full mb-4 group-hover:bg-red-50 group-hover:scale-110 transition-all duration-300">
+            <UploadCloud className="h-10 w-10 text-zinc-400 group-hover:text-red-600" />
           </div>
           <h3 className="text-lg font-semibold text-zinc-900">Click to Upload Loan Agreement</h3>
           <p className="text-sm text-zinc-500 mt-1 max-w-sm">
@@ -130,7 +143,7 @@ export default function UploadPage() {
         </Card>
       )}
 
-      {/* STEP 3: REVIEW & CONFIRM */}
+      {/* STEP 3: REVIEW & CONFIRM (EDITABLE) */}
       {step === "review" && data && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
           
@@ -142,10 +155,10 @@ export default function UploadPage() {
               </h3>
               <span className="text-xs bg-zinc-100 px-2 py-1 rounded text-zinc-500">Processed via Llama-3.3</span>
             </div>
-            <div className="h-150 bg-zinc-900 rounded-lg border border-zinc-800 flex items-center justify-center relative overflow-hidden">
-               <div className="text-center">
-                <FileText className="h-12 w-12 text-zinc-500 mx-auto mb-2" />
-                <p className="text-zinc-400 text-sm">PDF Content Analyzed</p>
+            <div className="h-150 bg-zinc-900 rounded-lg border border-zinc-800 flex items-center justify-center relative overflow-hidden shadow-2xl">
+              <div className="text-center opacity-50">
+                <FileText className="h-20 w-20 text-zinc-500 mx-auto mb-4" />
+                <p className="text-zinc-400 text-sm font-mono tracking-widest uppercase">PDF Preview</p>
               </div>
             </div>
           </div>
@@ -154,51 +167,88 @@ export default function UploadPage() {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-zinc-900 flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-green-600" /> Extraction Complete
+                <ShieldCheck className="h-5 w-5 text-green-600" /> Data Validation
               </h3>
+              <span className="text-xs text-zinc-400 italic">Please review before confirming</span>
             </div>
 
-            <Card className="border-red-100 bg-red-50/10">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-bold text-red-900">Extracted Covenants</CardTitle>
+            <Card className="border-red-100 bg-red-50/10 shadow-sm">
+              <CardHeader className="pb-3 border-b border-red-100/50 bg-red-50/30">
+                <CardTitle className="text-base font-bold text-red-900 flex items-center gap-2">
+                  <PencilLine className="h-4 w-4" /> Edit Extracted Details
+                </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-5 pt-5">
                 
-                <div className="space-y-2">
-                  <Label>Borrower Entity</Label>
-                  <Input defaultValue={data.borrower_name} className="bg-white border-zinc-200 font-medium" />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                   <div className="space-y-2">
-                    <Label>Loan Amount</Label>
-                    <Input defaultValue={data.loan_amount} className="bg-white" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Effective Date</Label>
-                    <Input defaultValue={data.effective_date} className="bg-white" />
-                  </div>
-                </div>
-
-                <Separator className="my-2" />
-
+                {/* Main Fields */}
                 <div className="space-y-3">
-                  <Label className="text-zinc-900 font-semibold">Financial Covenants Found ({data.covenants.length})</Label>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Borrower Entity</Label>
+                    <Input 
+                      value={data.borrower_name} 
+                      onChange={(e) => updateMainField('borrower_name', e.target.value)}
+                      className="bg-white border-zinc-200 font-medium text-zinc-900 focus-visible:ring-red-500" 
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                     <div className="space-y-1">
+                      <Label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Loan Amount</Label>
+                      <Input 
+                        value={data.loan_amount} 
+                        onChange={(e) => updateMainField('loan_amount', e.target.value)}
+                        className="bg-white border-zinc-200 focus-visible:ring-red-500" 
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Effective Date</Label>
+                      <Input 
+                        type="date"
+                        value={data.effective_date} 
+                        onChange={(e) => updateMainField('effective_date', e.target.value)}
+                        className="bg-white border-zinc-200 focus-visible:ring-red-500" 
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <Separator className="bg-red-200/50" />
+
+                {/* Covenants List */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                     <Label className="text-zinc-900 font-bold">Financial Covenants ({data.covenants.length})</Label>
+                     <span className="text-xs text-red-600 font-medium cursor-pointer hover:underline">+ Add Manual</span>
+                  </div>
                   
                   {data.covenants.map((cov, index) => (
-                    <div key={index} className="p-3 bg-white border border-zinc-200 rounded-md shadow-sm">
+                    <div key={index} className="p-3 bg-white border border-zinc-200 rounded-md shadow-sm transition-all hover:border-red-300 hover:shadow-md group">
                       <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-bold text-zinc-800">{cov.name}</span>
-                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{cov.confidence} Conf.</span>
+                        <Input 
+                           value={cov.name}
+                           onChange={(e) => updateCovenant(index, 'name', e.target.value)}
+                           className="h-7 text-sm font-bold text-zinc-800 border-none p-0 focus-visible:ring-0 w-full"
+                        />
+                        <span className="text-[10px] uppercase font-bold tracking-wider bg-green-100 text-green-700 px-2 py-0.5 rounded-full whitespace-nowrap">
+                          {cov.confidence} Match
+                        </span>
                       </div>
                       <div className="grid grid-cols-3 gap-2">
                         <div className="col-span-1">
-                          <span className="text-xs text-zinc-500">Operator</span>
-                          <Input defaultValue={cov.operator} className="h-8 text-sm" />
+                          <Label className="text-[10px] text-zinc-400 uppercase">Operator</Label>
+                          <Input 
+                            value={cov.operator} 
+                            onChange={(e) => updateCovenant(index, 'operator', e.target.value)}
+                            className="h-8 text-sm bg-zinc-50 border-zinc-100 focus-visible:ring-red-500" 
+                          />
                         </div>
                         <div className="col-span-2">
-                          <span className="text-xs text-zinc-500">Threshold</span>
-                          <Input defaultValue={cov.threshold} className="h-8 text-sm font-bold text-red-600" />
+                          <Label className="text-[10px] text-zinc-400 uppercase">Threshold Value</Label>
+                          <Input 
+                            value={cov.threshold} 
+                            onChange={(e) => updateCovenant(index, 'threshold', e.target.value)}
+                            className="h-8 text-sm font-bold text-red-600 bg-zinc-50 border-zinc-100 focus-visible:ring-red-500" 
+                          />
                         </div>
                       </div>
                     </div>
@@ -206,10 +256,10 @@ export default function UploadPage() {
                 </div>
 
                 <Button 
-                  className="w-full bg-red-600 hover:bg-red-700 text-white mt-4"
+                  className="w-full bg-red-600 hover:bg-red-700 text-white mt-4 h-12 text-base font-semibold shadow-lg shadow-red-200"
                   onClick={handleConfirm} 
                 >
-                  <CheckCircle2 className="mr-2 h-4 w-4" /> Confirm & Add to Portfolio
+                  <CheckCircle2 className="mr-2 h-5 w-5" /> Confirm & Add to Portfolio
                 </Button>
 
               </CardContent>
