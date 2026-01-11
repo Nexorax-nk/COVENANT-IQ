@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import { 
   ArrowLeft, CheckCircle2, AlertTriangle, Activity, Loader2, 
-  FileText, Calendar, TrendingUp, Info, ShieldAlert, Download, XCircle,
+  FileText, TrendingUp, ShieldAlert, Download, XCircle,
   Mail, Building, FileCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -44,7 +44,7 @@ export default function ReviewPage() {
   const [notes, setNotes] = useState("");
   const [reviewAction, setReviewAction] = useState<"approve" | "escalate" | null>(null);
 
-  // New State for Recommended Actions
+  // State for Recommended Actions
   const [actionsTaken, setActionsTaken] = useState({
     notify: false,
     requestCert: false,
@@ -66,14 +66,14 @@ export default function ReviewPage() {
       .catch(err => { console.error(err); setLoading(false); });
   }, [loanId]);
 
-  // 2. Handle Action Button Clicks (Simulation)
+  // 2. Handle Action Button Clicks
   const performAction = (action: 'notify' | 'requestCert' | 'escalateAgent') => {
-    // In a real app, this would trigger an API call to send emails/create tickets
     setActionsTaken(prev => ({ ...prev, [action]: true }));
-    alert(`Action Initiated: ${action === 'notify' ? 'Borrower Notified' : action === 'requestCert' ? 'Certificate Requested' : 'Agent Bank Contacted'}`);
+    // Just a visual cue for the demo
+    // alert(`Action logged: ${action}`); 
   };
 
-  // 3. Handle Final Submit
+  // 3. Handle Final Submit (FIXED REDIRECT)
   const handleSubmit = async () => {
     if (!reviewAction) return;
     setSubmitting(true);
@@ -81,9 +81,10 @@ export default function ReviewPage() {
     try {
       const res = await fetch(`http://localhost:8000/api/loans/${loanId}/review`, { method: 'POST' });
       if (res.ok) {
-        setTimeout(() => { router.push('/'); }, 1500);
+        // FIXED: Redirect to dashboard, not landing page
+        setTimeout(() => { router.push('/dashboard'); }, 1500);
       } else {
-        alert("System Error");
+        alert("System Error: Could not submit review.");
         setSubmitting(false);
       }
     } catch (e) {
@@ -107,7 +108,7 @@ export default function ReviewPage() {
       <div className="bg-white border-b border-zinc-200 sticky top-0 z-20 px-6 py-4 shadow-sm">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/">
+            <Link href="/dashboard">
               <Button variant="ghost" size="sm" className="text-zinc-500 hover:text-zinc-900">
                 <ArrowLeft className="h-4 w-4 mr-1" /> Back to Dashboard
               </Button>
@@ -151,7 +152,7 @@ export default function ReviewPage() {
                 <Activity className="h-4 w-4 text-red-600" />
                 <AlertTitle className="text-red-900">Risk Trigger Detected</AlertTitle>
                 <AlertDescription className="text-zinc-600 mt-1">
-                  AI analysis indicates a potential breach in <strong>Debt-to-EBITDA</strong>. 
+                  AI analysis indicates a potential breach in <strong>Debt-to-EBITDA</strong> based on projected financials. 
                   The borrower's status has been automatically downgraded to <strong>Watchlist</strong>.
                 </AlertDescription>
               </Alert>
@@ -214,7 +215,7 @@ export default function ReviewPage() {
         {/* RIGHT COLUMN: ACTION CENTER */}
         <div className="lg:col-span-1 space-y-6">
           
-          {/* NEW: RECOMMENDED ACTIONS CARD */}
+          {/* RECOMMENDED ACTIONS CARD */}
           <Card className="shadow-sm border-zinc-200">
             <CardHeader className="bg-zinc-50 border-b border-zinc-100 pb-3">
               <CardTitle className="text-sm font-bold uppercase tracking-wider text-zinc-500">Recommended Actions</CardTitle>
@@ -305,7 +306,7 @@ export default function ReviewPage() {
               
               <Button 
                 className={`w-full font-medium ${
-                  reviewAction === "escalate" ? "bg-red-600 hover:bg-red-700" : "bg-zinc-900 hover:bg-zinc-800"
+                  reviewAction === "escalate" ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-zinc-800"
                 }`}
                 disabled={!reviewAction || submitting}
                 onClick={handleSubmit}
