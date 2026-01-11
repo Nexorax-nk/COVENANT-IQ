@@ -33,6 +33,9 @@ export default function Dashboard() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // --- HYDRATION FIX: Store time in state ---
+  const [currentTime, setCurrentTime] = useState<string>("");
+
   // Derived State
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [stats, setStats] = useState({
@@ -46,8 +49,11 @@ export default function Dashboard() {
   const [watchlistLoans, setWatchlistLoans] = useState<Loan[]>([]);
   const [processingId, setProcessingId] = useState<number | null>(null);
 
-  // 1. FETCH DATA
+  // 1. FETCH DATA & SET TIME
   useEffect(() => {
+    // Fix Hydration error by setting time only on client mount
+    setCurrentTime(new Date().toLocaleTimeString());
+
     async function fetchData() {
       try {
         const res = await fetch("http://localhost:8000/api/loans");
@@ -132,7 +138,10 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Portfolio Dashboard</h1>
           <div className="flex items-center gap-2 mt-1">
              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-             <p className="text-zinc-500 text-sm">System Operational • Updated {new Date().toLocaleTimeString()}</p>
+             {/* FIXED: Uses state variable 'currentTime' instead of direct Date() call */}
+             <p className="text-zinc-500 text-sm">
+               System Operational • Updated {currentTime || "..."}
+             </p>
           </div>
         </div>
         <Link href="/upload">

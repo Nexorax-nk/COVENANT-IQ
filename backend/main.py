@@ -20,17 +20,14 @@ scheduler = BackgroundScheduler()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. Create DB Tables
     create_db_and_tables()
     
-    # 2. Start the Background Bot (Runs every 60 seconds)
-    scheduler.add_job(run_portfolio_health_check, 'interval', seconds=60)
+    # CHANGED: 'seconds=60' -> 'hours=1'
+    scheduler.add_job(run_portfolio_health_check, 'interval', hours=1) 
+    
     scheduler.start()
-    print("✅ [SYSTEM] Background Risk Monitor Started.")
-    
+    print("✅ [SYSTEM] Hourly Risk Monitor Started.")
     yield
-    
-    # 3. Cleanup on Shutdown
     scheduler.shutdown()
 
 app = FastAPI(lifespan=lifespan)
