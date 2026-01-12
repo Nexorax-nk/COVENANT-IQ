@@ -11,6 +11,7 @@ import {
   ShieldAlert
 } from "lucide-react";
 import Link from "next/link";
+import { API_BASE_URL } from "@/lib/config"; // <--- IMPORT THIS
 
 // --- TYPES ---
 interface Loan {
@@ -56,7 +57,9 @@ export default function Dashboard() {
 
     async function fetchData() {
       try {
-        const res = await fetch("http://localhost:8000/api/loans");
+        // --- UPDATED: Uses the config variable instead of localhost ---
+        const res = await fetch(`${API_BASE_URL}/api/loans`);
+        
         if (!res.ok) throw new Error("Failed to fetch");
         const data: Loan[] = await res.json();
         setLoans(data);
@@ -138,7 +141,6 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Portfolio Dashboard</h1>
           <div className="flex items-center gap-2 mt-1">
              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-             {/* FIXED: Uses state variable 'currentTime' instead of direct Date() call */}
              <p className="text-zinc-500 text-sm">
                System Operational • Updated {currentTime || "..."}
              </p>

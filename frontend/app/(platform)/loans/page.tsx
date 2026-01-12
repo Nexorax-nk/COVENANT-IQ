@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { API_BASE_URL } from "@/lib/config"; // <--- IMPORT THIS
 
 // 1. Define Types matching your Backend Response
 interface Loan {
@@ -42,7 +43,8 @@ export default function LoanPortfolioPage() {
   async function fetchLoans() {
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:8000/api/loans");
+      // --- UPDATED: Uses the config variable instead of localhost ---
+      const res = await fetch(`${API_BASE_URL}/api/loans`);
       if (!res.ok) throw new Error("Failed to fetch");
       const data: Loan[] = await res.json();
 

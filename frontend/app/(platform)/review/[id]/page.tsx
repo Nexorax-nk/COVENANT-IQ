@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { API_BASE_URL } from "@/lib/config"; // <--- IMPORT THIS
 
 interface Loan {
   id: number;
@@ -54,7 +55,8 @@ export default function ReviewPage() {
   // 1. Fetch Loan Data
   useEffect(() => {
     if (!loanId) return;
-    fetch(`http://localhost:8000/api/loans/${loanId}`)
+    // --- UPDATED: Uses the config variable instead of localhost ---
+    fetch(`${API_BASE_URL}/api/loans/${loanId}`)
       .then(res => res.json())
       .then(data => {
         setLoan(data);
@@ -79,7 +81,8 @@ export default function ReviewPage() {
     setSubmitting(true);
     
     try {
-      const res = await fetch(`http://localhost:8000/api/loans/${loanId}/review`, { method: 'POST' });
+      // --- UPDATED: Uses the config variable instead of localhost ---
+      const res = await fetch(`${API_BASE_URL}/api/loans/${loanId}/review`, { method: 'POST' });
       if (res.ok) {
         // FIXED: Redirect to dashboard, not landing page
         setTimeout(() => { router.push('/dashboard'); }, 1500);

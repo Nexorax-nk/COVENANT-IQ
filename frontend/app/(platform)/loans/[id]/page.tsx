@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea 
 } from "recharts";
+import { API_BASE_URL } from "@/lib/config"; // <--- IMPORT THIS
 
 // --- 1. FIXED TYPES (Solves the TS Error) ---
 interface Loan {
@@ -129,7 +130,8 @@ export default function LoanDetailsPage() {
     async function fetchLoanDetails() {
       if (!loanId) return;
       try {
-        const res = await fetch(`http://localhost:8000/api/loans/${loanId}`);
+        // --- UPDATED: Uses the config variable instead of localhost ---
+        const res = await fetch(`${API_BASE_URL}/api/loans/${loanId}`);
         if (!res.ok) throw new Error("Loan not found");
         const data: Loan = await res.json();
         setLoan(data);
