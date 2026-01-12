@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { UploadCloud, FileText, CheckCircle2, Loader2, ShieldCheck, PencilLine } from "lucide-react";
+import { API_BASE_URL } from "@/lib/config"; // <--- IMPORT THIS
 
 // Define the shape of data we expect from our Python Backend
 interface ExtractedData {
@@ -41,7 +42,8 @@ export default function UploadPage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch("http://localhost:8000/api/analyze", {
+      // --- UPDATED: Uses the config variable instead of localhost ---
+      const response = await fetch(`${API_BASE_URL}/api/analyze`, {
         method: "POST",
         body: formData,
       });
@@ -80,15 +82,15 @@ export default function UploadPage() {
     if (!data) return;
 
     try {
-      // This sends the *edited* data to your SQLite database
-      const response = await fetch("http://localhost:8000/api/loans", {
+      // --- UPDATED: Uses the config variable instead of localhost ---
+      const response = await fetch(`${API_BASE_URL}/api/loans`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data), 
       });
 
       if (response.ok) {
-        router.push('/'); 
+        router.push('/dashboard'); // Should likely go to dashboard after success
       } else {
         alert("Failed to save loan to database.");
       }
@@ -192,7 +194,7 @@ export default function UploadPage() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
-                     <div className="space-y-1">
+                      <div className="space-y-1">
                       <Label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Loan Amount</Label>
                       <Input 
                         value={data.loan_amount} 
@@ -217,8 +219,8 @@ export default function UploadPage() {
                 {/* Covenants List */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                     <Label className="text-zinc-900 font-bold">Financial Covenants ({data.covenants.length})</Label>
-                     <span className="text-xs text-red-600 font-medium cursor-pointer hover:underline">+ Add Manual</span>
+                      <Label className="text-zinc-900 font-bold">Financial Covenants ({data.covenants.length})</Label>
+                      <span className="text-xs text-red-600 font-medium cursor-pointer hover:underline">+ Add Manual</span>
                   </div>
                   
                   {data.covenants.map((cov, index) => (
