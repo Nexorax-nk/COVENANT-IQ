@@ -1,3 +1,2 @@
-## 🚧 Project Status
-This project is currently under active development.
-Core architecture is implemented, but features and docs are incomplete.
+Covenant IQ
+Enterprise-Grade AI Platform for Loan Covenant & Obligation Monitoring
