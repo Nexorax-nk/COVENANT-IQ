@@ -7,6 +7,19 @@ Designed for banks, lenders, and risk teams, Covenant IQ transforms static legal
 
 ---
 
+## 🎥 Project Demo
+
+[![Covenant IQ Demo](https://img.youtube.com/vi/ESAQ7n7nXQ8/0.jpg)](https://youtu.be/ESAQ7n7nXQ8)
+
+---
+
+## 🌐 Live Deployment
+
+**Frontend:** https://covenant-iq-rust.vercel.app/  
+**Backend:** https://covenant-iq.onrender.com
+
+---
+
 ## 📌 Problem Statement
 
 Commercial lending is a multi-trillion-dollar industry governed by highly complex legal agreements.  
@@ -71,6 +84,152 @@ Covenant IQ bridges the gap between **legal documentation** and **live risk mana
 
 ---
 
+## 🏗️ System Architecture
+
+```mermaid
+graph TD
+    %% --- STYLE DEFINITIONS ---
+    classDef user fill:#ffffff,stroke:#333,stroke-width:2px,color:#333;
+    classDef frontend fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0c4a6e;
+    classDef backend fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d;
+    classDef ai fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,stroke-dasharray: 5 5;
+    classDef db fill:#f3f4f6,stroke:#4b5563,stroke-width:2px,color:#1f2937;
+    classDef edgeLabel background-color:#fff,color:#333,padding:5px;
+
+    %% --- NODES & FLOW ---
+    
+    User([👤 Risk Officer]):::user
+    
+    subgraph "🟦 Client Layer"
+        UI[💻 Next.js Frontend]:::frontend
+    end
+
+    User -->|1. Uploads PDF| UI
+
+    subgraph "🟩 Backend Infrastructure"
+        direction TB
+        API[⚡ FastAPI Server]:::backend
+        Service[⚙️ Analyzer Service]:::backend
+        OCR[📄 OCR Module]:::backend
+    end
+    
+    UI -->|2. POST /api/analyze| API
+    UI -.->|Polls Status| API
+    
+    API -->|3. Async Handoff| Service
+    Service -->|4. Extract Text| OCR
+
+    subgraph "🧠 AI Intelligence Engine"
+        direction TB
+        LLM{{🤖 Llama 3.3 via Groq}}:::ai
+        Validator[🛡️ Schema Validator]:::ai
+    end
+
+    OCR -->|5. Raw Text Chunks| LLM
+    LLM -->|6. Structured JSON| Validator
+
+    subgraph "🗄️ Persistence"
+        DB[(SQLite Database)]:::db
+    end
+
+    Validator -->|7. Store Records| DB
+    API -.->|8. Return JSON| UI
+
+    %% Link Styling
+    linkStyle default stroke:#666,stroke-width:2px;
+```
+
+### Architecture Overview
+```
+┌─────────────────┐
+│   User/Client   │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────────────────────────────┐
+│         Frontend (Next.js 14)           │
+│  - Dashboard UI                         │
+│  - Portfolio Views                      │
+│  - Compliance Reports                   │
+└────────┬────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────┐
+│      Backend API (FastAPI)              │
+│  - Document Upload Endpoints            │
+│  - Covenant Extraction Service          │
+│  - Compliance Monitoring Engine         │
+└────────┬────────────────────────────────┘
+         │
+         ├──────────┬─────────────┬────────┐
+         ▼          ▼             ▼        ▼
+   ┌─────────┐ ┌────────┐  ┌──────────┐ ┌───────────┐
+   │  SQLite │ │  Groq  │  │   PDF    │ │ Pydantic  │
+   │ Database│ │  LLM   │  │ Parser   │ │ Validator │
+   └─────────┘ └────────┘  └──────────┘ └───────────┘
+```
+
+**Key Components:**
+- **Frontend Layer:** User interface for document management and monitoring
+- **API Layer:** RESTful endpoints for all core operations
+- **AI Processing:** Hierarchical RAG + Schema-validated LLM outputs
+- **Data Layer:** Structured storage of loans, covenants, and compliance history
+
+---
+
+## 📂 Project Structure
+```
+COVENANT-IQ/
+├── backend/                       # FastAPI Backend
+│   ├── services/                  # Business logic & Helper modules
+│   │   ├── analyzer.py            # AI Analysis logic
+│   │   ├── ocr.py                 # OCR processing
+│   │   └── scheduler.py           # Task scheduling
+│   ├── upload/                    # Temp storage for uploaded files
+│   ├── venv/                      # Virtual environment
+│   ├── .env                       # Backend Environment variables
+│   ├── .gitignore
+│   ├── covenant.db                # SQLite Database file
+│   ├── database.py                # Database connection setup
+│   ├── main.py                    # API Entry point
+│   ├── models.py                  # SQLModel database schemas
+│   ├── requirements.txt           # Python dependencies
+│   └── seed.py                    # Database seeding script
+│
+├── frontend/                      # Next.js Frontend
+│   ├── app/                       # App Router
+│   │   ├── (platform)/            # Protected Platform Routes
+│   │   │   ├── dashboard/
+│   │   │   │   └── page.tsx       # Main Dashboard view
+│   │   │   ├── loans/
+│   │   │   │   ├── [id]/          # Dynamic Loan Details route
+│   │   │   │   │   └── page.tsx
+│   │   │   │   └── page.tsx       # Loans List view
+│   │   │   ├── reports/
+│   │   │   │   └── page.tsx       # Reports view
+│   │   │   ├── review/
+│   │   │   │   └── [id]/
+│   │   │   │       └── page.tsx   # Review Interface
+│   │   │   └── upload/
+│   │   │       ├── layout.tsx
+│   │   │       └── page.tsx       # Upload Interface
+│   │   ├── favicon.ico
+│   │   ├── globals.css            # Global styles
+│   │   ├── layout.tsx             # Root Layout
+│   │   └── page.tsx               # Landing Page
+│   ├── components/                # React Components
+│   │   ├── ui/                    # Shadcn/UI components
+│   │   └── Sidebar.tsx            # Navigation Sidebar
+│   ├── lib/                       # Utility functions
+│   ├── public/                    # Static assets
+│   ├── .gitignore
+│   └── package.json
+|
+└── README.md
+```
+
+---
+
 ## 🛠️ Technology Stack
 
 | Layer       | Technology                     | Rationale |
@@ -91,7 +250,6 @@ Covenant IQ bridges the gap between **legal documentation** and **live risk mana
 Traditional RAG pipelines fail on legal documents because they retrieve keywords without understanding **legal scope** (e.g., exceptions buried in schedules).
 
 **Our Approach: Hierarchical Chunking**
-**Innovation:** Instead of random text chunks, we segment PDFs by legal structure (Articles, Sections).
 
 - PDFs are segmented by legal structure (Articles, Sections)
 - Definitions are resolved contextually across sections
@@ -134,6 +292,13 @@ Covenant IQ enforces strict output schemas using **Pydantic**.
 
 ---
 
+### 1. Clone the Repository
+```bash
+git clone https://github.com/yourusername/covenant-iq.git
+cd covenant-iq
+```
+
+---
 
 ### 2. Backend Setup
 ```bash
